@@ -1,0 +1,69 @@
+CRIPTARE IN PYTHON:
+SERVER:
+import socket
+
+def encrypt(message):
+    # algoritm de criptare simplu (substituție)
+    encrypted = ""
+    for char in message:
+        if char.isalpha():
+            char_code = ord(char)
+            if char.isupper():
+                char_code = (char_code + 3 - 65) % 26 + 65
+            else:
+                char_code = (char_code + 3 - 97) % 26 + 97
+            encrypted += chr(char_code)
+        else:
+            encrypted += char
+    return encrypted
+
+HOST = '127.0.0.1'
+PORT = 65432
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.bind((HOST, PORT))
+    s.listen()
+    conn, addr = s.accept()
+    with conn:
+        print('Connected by', addr)
+        while True:
+            data = conn.recv(1024)
+            if not data:
+                break
+            message = data.decode()
+            print('Received message:', message)
+            encrypted_message = encrypt(message)
+            print('Encrypted message:', encrypted_message)
+         
+            conn.sendall(b'Mesajul a fost criptat cu succes\n')
+
+
+CLIENT:
+import socket
+
+# setăm adresa IP și portul serverului
+IP = '127.0.0.1'
+PORT = 65432
+
+# creăm socket-ul pentru a ne conecta la server
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# ne conectăm la server
+client_socket.connect((IP, PORT))
+
+while True:
+    # cerem utilizatorului să introducă mesajul
+    message = input('Introduceți mesajul pentru a fi criptat sau tastați "exit" pentru a închide conexiunea: ')
+    if message.lower() == 'exit':
+        break
+
+    # trimitem mesajul către server
+    client_socket.sendall(message.encode())
+
+    # primim confirmarea că mesajul a fost criptat cu succes
+    response = client_socket.recv(1024).decode()
+    print(response)
+
+# închidem conexiunea cu serverul
+client_socket.close()
+

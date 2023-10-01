@@ -1,0 +1,161 @@
+CRIPTARE In C:
+SERVER:
+//includere biblioteci pentru creare socket
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h> 
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+// functie pentru criptarea mesajului
+char* encrypt(char* message) {
+    char* encrypted = (char*) malloc(strlen(message) + 1);
+    int i = 0;
+//se parcurge mesajul dar ca parametru si daca litera este majuscula/litera mica, caracterul se va inlocui cu litera de pe a treia pozitie
+    while (message[i] != '\0') {
+        if (message[i] >= 'A' && message[i] <= 'Z') {
+            encrypted[i] = 'A' + (message[i] - 'A' + 3) % 26;
+        } else if (message[i] >= 'a' && message[i] <= 'z') {
+            encrypted[i] = 'a' + (message[i] - 'a' + 3) % 26;
+        } else {
+            encrypted[i] = message[i];
+        }
+        i++;
+    }
+    encrypted[i] = '\0';
+    return encrypted;
+}
+
+int main(int argc, char *argv[]) {
+//descriptor de fisier pt socket ul serverului, descriptor de fisier pentru socket ul clientului conectat, portul
+    int sockfd, newsockfd, portno;
+//dimensiunea socketului
+    socklen_t clilen;
+    char buffer[256];
+//structura ce contine adresa si portul serverului 
+    struct sockaddr_in serv_addr, cli_addr;
+    int n;
+
+    // cream socket-ul pentru asteptarea conexiunilor de la clienti
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("ERROR opening socket");
+        exit(1);
+    }
+
+    // initializam structura pentru adresa serverului
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    portno = 1234;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(portno);
+
+    // asociem adresa serverului cu socket-ul
+    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        perror("ERROR on binding");
+        exit(1);
+    }
+
+    // asteptam conexiuni de la clienti
+    listen(sockfd, 5);
+    clilen = sizeof(cli_addr);
+    while (1) {
+        // acceptam o conexiune de la un client
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        if (newsockfd < 0) {
+            perror("ERROR on accept");
+            exit(1);
+        }
+
+        // citim mesajul de la client si il criptam
+        bzero(buffer, 256);
+        n = read(newsockfd, buffer, 255);
+        if (n < 0) {
+            perror("ERROR reading from socket");
+            exit(1);
+        }
+        printf("Received message: %s\n", buffer);
+        char* encrypted_message = encrypt(buffer);
+        printf("Encrypted message: %s\n", encrypted_message);
+
+        // trimitem confirmarea criptarii catre client
+        n = write(newsockfd, "Mesajul a fost criptat cu succes\n", 34);
+        if (n < 0) {
+            perror("ERROR writing to socket");
+            exit(1);
+        }
+
+        // inchidem conexiunea cu clientul curent
+        close(newsockfd);
+    }
+    close(sockfd);
+}
+
+CLIENT:
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
+#define MAX_MESSAGE_SIZE 1024
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <server_ip_address> <port>\n", argv[0]);
+        return 1;
+    }
+
+    char *server_ip = argv[1];
+    int server_port = atoi(argv[2]);
+
+    // crearea socket-ului clientului
+    int client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_socket == -1) {
+        perror("Failed to create socket");
+        return 1;
+    }
+
+    // pregatim informatiile pentru conectarea la server
+    struct sockaddr_in server_address;
+    memset(&server_address, 0, sizeof(server_address));
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = inet_addr(server_ip);
+    server_address.sin_port = htons(server_port);
+
+    // conectarea la server
+    if (connect(client_socket, (struct sockaddr*) &server_address, sizeof(server_address)) < 0) {
+        perror("Failed to connect to server");
+        return 1;
+    }
+
+    // citirea mesajului de la tastatură
+    char message[MAX_MESSAGE_SIZE];
+    printf("Introduceți mesajul pentru a fi criptat: ");
+    fgets(message, MAX_MESSAGE_SIZE, stdin);
+    message[strcspn(message, "\n")] = 0; // eliminarea caracterului newline (\n)
+
+
+    // trimiterea mesajului catre server
+    if (send(client_socket, message, strlen(message), 0) < 0) {
+        perror("Failed to send message to server");
+        return 1;
+    }
+
+    // primirea răspunsului de la server
+    char response[MAX_MESSAGE_SIZE];
+    if (recv(client_socket, response, MAX_MESSAGE_SIZE, 0) < 0) {
+        perror("Failed to receive response from server");
+        return 1;
+    }
+
+    printf("%s\n", response);
+
+    // închiderea socket-ului clientului
+    close(client_socket);
+
+    return 0;
+}
